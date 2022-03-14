@@ -1,0 +1,614 @@
+---
+title: 'Comp 4442 Project:  Paul O''Leary'
+output:
+  pdf_document: default
+  html_notebook: default
+  word_document: default
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Cmd+Shift+Enter*. 
+
+```{r}
+knitr::opts_chunk$set(echo = TRUE)
+#install.packages("ggseas")
+#install.packages("tseries")
+#install.packages("forecast")
+#install.packages("Metrics")
+#install.packages("outliers")
+#install.packages("sarima")
+#install.packages("fpp2")
+library(tidyverse)
+library(ggpubr)
+library(HistData)
+library(boot)
+library(ggseas)
+library(tseries)
+library(stats)
+library(forecast)
+library(fpp2)
+library(Metrics)
+library(outliers)
+library(sarima)
+```
+### Note to Dr. Christensen.  This R Notebook contains a lot of commented out stuff. I have left a lot of the various attempts I made to get my head around everything SARIMA.  Apologies if the mess is too much. 
+
+Time Series analysis of sea level data.
+
+Code to import file.  Basic data file analysis.
+
+```{r}
+# Code to pull the file in, and do a basic plot ALL data.  Data Manipulations.
+
+wths <- c(3,5,14,10,10,10,10,10,10,10,10,10)
+
+datSL <- read.fwf("GMSL_DATA.txt", wths, header = FALSE)
+
+# datSL2 <- datSL[3,6]
+datSL <- data.frame(datSL$V3,datSL$V6)
+
+names(datSL)[1] <- "Yr"
+names(datSL)[2] <- "SL"
+
+# Basic data analysis
+
+boxplot(datSL$SL, ylab = "Sea Level Measure")
+
+# qqplot(datSL$Yr, datSL$SL)
+
+ggdensity(datSL, x = "SL")
+ggqqplot(datSL, x = "SL")  
+
+# Any missing data
+# Missing or BAD data flag in data file is 99900.000
+sum(datSL == 99900.000)
+sum(is.na(datSL))
+
+# No missing or bad data
+```
+I found conflicting information on the web about the importance of Normality in Time Series Data.  I wonder if the fact that the data is centered around a 20 year mean reference affects the plots.  This could be addressed by shifting the data all into the positive?  
+
+
+
+```{r}
+
+# Basic plot of raw data
+
+gSL <- ggplot(datSL, aes(x=Yr, y=SL))
+gSL <- gSL + geom_point(size = .2, color="blue") + ggtitle("Global Mean Sea Level Data - NASA, 1993 to 2020") 
+gSL <- gSL + labs(x="Year", y="Variation w/ respect to 20 year mean reference (mm)")
+gSL
+
+```
+
+
+
+Select the appropriate ARIMA model?
+acf() and pacf() with plot="false"
+
+******
+Code from here through line 187 covers my experimentation with figuring out how SARIMA works.
+
+```{r}
+# First passes at trying to determine the components of the SARIMA analysis.
+
+# acf(datProjDiffs1)
+# acf(datProjDiffs2)
+
+# # Values of the AutoCorrelation
+# datCorr <- acf(datProjDiffs4)
+# 
+# # Values of partial AutoCorrelations
+# datCorrPartial <- pacf(datProjDiffs4)
+
+```
+Tail Off to 0.
+
+Looks like for ACF it comes into the boundaries of the CI at 15 for 3 OR 4 differences
+For PACF, looks like 12 for 4 differences.
+
+ARMA(13, 15) ???
+
+Try auto-arima:
+
+```{r}
+
+# Just to check that it is aware of number of seasonal changes.  ??
+# auto.arima(datProj$V6, seasonal = TRUE, stationary = FALSE)
+# 
+# auto.arima(datProjDiffs1)
+
+#let this run for a while:
+#auto.arima(datProjTS)
+
+```
+
+#RUN on the TS data
+The time series frequency has been rounded to support seasonal differencing.Series: datProjTS 
+ARIMA(5,0,2)(2,1,1)[36] with drift 
+
+Coefficients:
+NaNs produced          ar1    ar2     ar3     ar4     ar5     ma1      ma2     sar1     sar2     sma1   drift
+      -0.0973  0.496  0.0952  0.2230  0.1038  0.6379  -0.1079  -0.4491  -0.2088  -0.1699  0.0863
+s.e.   0.0017    NaN  0.0042  0.0029  0.0030  0.0266   0.0297   0.0073      NaN   0.0124  0.0105
+
+sigma^2 estimated as 7.536:  log likelihood=-2358.37
+
+*************************
+OLD STUFF  *******
+Auto-ARIMA returns ARIMA(3,1,3), with mean=0 when run on SL
+
+Run on Diffs1, mean is 0, and (3,0,3)  (But this is after already running a DIFF - makes sense)
+
+(Run on Diffs2-4, the mean is non-zero, and get (3,0,0), (1,0,5) and (1,0,0) respectively)
+*************************
+Website, Forecasting with long seasonal data:
+https://robjhyndman.com/hyndsight/longseasonality/
+
+```{r}
+# METHOD = LM ??
+
+#arimaResults <- arima(datProjTS, order = c(5,0,2), seasonal = c(2,1,1), method = "ML")
+# 
+```
+
+RUNS SLOW
+
+**********
+OLD
+(Going with (3,1,3) for now, and method "ML")
+
+These got he lowest AICc and BIC close to the values determined by Auto.ARIMA.  We KNOW
+
+********
+What about Seasonal. Arima
+
+
+```{r}
+#sarimaResults <- Arima(datProjTS, order = c(3,1,3), seasonal = c(3,1,3), method = "ML")
+#sarimaResults
+```
+
+Back to Arima results:
+Check the residuals
+
+```{r}
+#checkresiduals(arimaResults)
+```
+
+
+
+Forecast:
+
+Showing no cyclical movement.  Model bad?
+```{r}
+#arimaResults %>% forecast() %>% autoplot()
+```
+*************
+
+## Everything Above was my first attempts to make sense of all this.
+## ************************************
+
+## REAL WORK IS BELOW:
+
+## *************************************
+## Split the data, 70% into training data, 30% into test data.  For Time Series data this must be sequential - meaning the first 70% is the data from 1993 through 2012, and the 30% test data is 2012 through 2020.
+
+```{r}
+
+# Create Time Series data, and split into 70%/30%
+
+datSL_TS <- ts(datSL$SL, frequency = 36.8, start = c(1993, 1))
+
+# Split into 70% / 30%  SEA LEAVEL DATA
+
+trainTS <- head(datSL_TS, round(length(datSL_TS) * 0.7))
+x <- length(datSL_TS) - length(trainTS)
+testTS <- tail(datSL_TS, x)
+
+# Always experimenting.
+# sarima(SL~Temp, data = trainTS, ss.method = "sarima", use.symmetry = FALSE, SSinit = "Rossignol2011")
+
+```
+# Is the data Additive or Multiplicative?  Additive.
+
+## Is the data stationary?  
+
+Use the Augmented Dickey-Fuller test to check.
+
+Then run Autocorrelation of a univariate time series to check as well.
+
+```{r echo=FALSE}
+
+#FOR ADDITIVE:
+
+decProjTS <- decompose(datSL_TS, type = "additive")
+plot(decProjTS)
+
+# FOR STATIONARY
+adf.test(trainTS)
+adf.test(datSL_TS)
+
+# I do not understand this result.  Seems to be counter intuitive.
+# Is it being fooled because the data is a 20 year average, roughly centered around 0?
+# Let me try this:
+
+datSL_TEST <- datSL_TS + 50
+adf.test(datSL_TEST)
+# No difference
+
+plot(1:length(trainTS),trainTS,
+     type='l',col='red',
+     xlab = "time (t)",
+     ylab = "Y(t)",
+     main = "Trend signal")
+
+plot(1:length(datSL_TS),datSL_TS,
+     type='l',col='red',
+     xlab = "time (t)",
+     ylab = "Y(t)",
+     main = "Trend signal")
+
+# Autocorrelation of a Univariate time series
+acf(trainTS,lag.max = length(trainTS),
+         xlab = "lag #", ylab = 'ACF',main='Autocorrelation, GMSL Data')
+
+acf(datSL_TS,lag.max = length(trainTS),
+         xlab = "lag #", ylab = 'ACF',main='Autocorrelation, GMSL Data')
+
+outlier(trainTS)
+scores(trainTS, type="t")
+chisq.out.test(trainTS, variance=var(trainTS), opposite = FALSE)
+
+# OUTLIER SHOWN.  DEAL WITH IT???  Tried later, and it made no difference in the final plot.
+# 
+# which(trainTS == -44.64)[[1]]
+# ggAcf(datSL_TS)
+
+
+```
+
+The Data is NOT Stationary.  
+
+The Dickey Fuller test returned a p-value of less than .01, meaning to reject the null hypothesis that the data is stationary.
+
+The serial correlation, or autocorrelation calculates the correlation with observations from previous time steps - these are called lags.  Almost all of the lags for this data is outside the 95% confidence interval.meaning the data is NOT stationary - the MEAN is changing over time.  
+
+
+## Decomposition
+
+The data looks to be Seasonal.  We can decompose it, and look at some graphs to get a better idea.
+
+```{r}
+
+#Decomposed
+decTrainTS <- decompose(trainTS, type = "additive")
+plot(decTrainTS)
+
+decFullData <- decompose(datSL_TS, type = "additive")
+plot(decFullData)
+
+# I attempted some seasonal adjusting to get the forecasting to work.
+# # Seasonally adjusted
+# decTrainTSSeasAdjusted <- trainTS - decTrainTS$seasonal
+# plot(decTrainTSSeasAdjusted)
+
+```
+## The Decomposition of the trainTS data is shown above.  
+
+observed: shows the raw data for the training Time Series set
+
+trend: shows that the data is definitely trending upwards
+
+seasonal:  The data shows a definite cyclical season
+
+random: describes the "noise" in the data.  This represents the remainder after the other components have been removed.
+
+website:  https://a-little-book-of-r-for-time-series.readthedocs.io/en/latest/src/timeseries.html
+
+
+## Differencing the data, because it is Seasonal
+
+```{r}
+
+# Calc various Difference levels in R, to REMOVE the Seasonal component of the data:
+trainTSDiffs1 <- diff(trainTS, differences = 1)
+
+plot.ts(trainTSDiffs1)
+
+#Try 2:
+trainTSDiffs2 <- diff(trainTS, differences = 2)
+plot.ts(trainTSDiffs2)
+
+#Maybe for snicks - lets do 3
+trainTSDiffs3 <- diff(trainTS, differences = 3)
+plot.ts(trainTSDiffs3)
+
+#lets do 4
+trainTSDiffs4 <- diff(trainTS, differences = 4)
+plot.ts(trainTSDiffs4)
+
+
+plot.ts(trainTS)
+
+
+# Attempt at a log differencing.  Did not make improve the model.
+trainTSDiffsLOG <- diff(log(trainTS + 50))
+
+```
+## Differencing results
+
+One difference seemed to smooth the seasonality of the SL data.  However, when I began to have problems with the ARIMA model, I tried other levels of differencing.
+
+## Attempted to determine the ARIMA modeling numbers to use, by looking at the autocorrelation and partial autocorrelation of the differences data.
+
+
+```{r}
+
+# Values of the AutoCorrelation
+datCorr <- acf(trainTSDiffs1)
+
+# datCorrRaw <- acf(datSL_TS)
+
+# Values of partial AutoCorrelations
+datCorrPartial <- pacf(trainTSDiffs1)
+
+# Check ACF and pacf of the seasonal component of the decomposed data
+
+datSeasCorr <- acf(diff(decTrainTS$seasonal, differences = 1))
+
+datSeasCorrPartial <- pacf(diff(decTrainTS$seasonal, differences = 1))
+
+```
+## The ACF graphs above should show a trending to 0.  The ACF does, but the PACF does not.  So I tried different number of differences.  For brevity, I will show d = 4:
+
+```{r}
+
+# # Values of the AutoCorrelation
+datCorr <- acf(trainTSDiffs4)
+# 
+# # Values of partial AutoCorrelations
+datCorrPartial <- pacf(trainTSDiffs4)
+
+```
+## I attempted to estimate the values needed for Arima(p, d, q).  
+
+Arima(p,d,q):  Arima is a non-seasonal predictive model.  p is the number of autoregressive terms, d is the number of differences calculated, and q is the number of lagged forecast errors.  One method to estimate these: for p, count the number of entries outside the confidence interval on the ACF graph before it trends to 0. We know d from above.  For q, count the number of entries outside the confidence interval on the PACF graph before it trends to 0.
+
+My manual method of doing all this was tedious, and netted me no good results.  
+
+And I discovered auto.arima, which programmatically attempts multiple p, d, q combinations, and also finds seasonal P, D, Q, m values to get much more accurate results by incorporating the seasonal components of SARIMA..
+
+
+## auto.arima
+
+Took a while to determine the entries necessary for the best prediction for the testTS data.
+
+```{r}
+# 
+
+SARIMA.model <- auto.arima(trainTS, allowdrift = TRUE, stationary = FALSE, seasonal = TRUE, method = "ML")  
+ 
+plot(forecast(SARIMA.model, h = 302))
+
+summary(SARIMA.model)
+
+```
+
+*** Auto-arima took 3.5 minutes to run
+
+## Below is the results from the auto.arima.
+
+The time series frequency has been rounded to support seasonal differencing.Series: trainTS 
+ARIMA(1,0,1)(2,1,0)[36] with drift 
+
+Coefficients:
+         ar1      ma1     sar1     sar2   drift
+      0.9202  -0.5835  -0.5888  -0.2636  0.0700
+s.e.  0.0228   0.0481   0.0392   0.0419  0.0092
+
+sigma^2 estimated as 8.869:  log likelihood=-1681.27
+AIC=3374.54   AICc=3374.67   BIC=3401.57
+
+
+
+## Based on these findings, I will run Arima.
+
+Note: Many attempts were made using arima (lower-case a), as opposed to Arima (capital a).  Arima seems to have the necessary parameters to make it work as expected.
+
+```{r}
+
+# This one worked!!
+arimaResults <- Arima(trainTS, order = c(1,0,1), seasonal = c(2,1,0), method = "ML", 
+                      include.drift = TRUE)
+
+```
+
+
+## Check the residuals:
+
+```{r}
+
+# checkresiduals(arimaResults)
+
+checkresiduals(SARIMA.model)
+
+res <- resid(arimaResults)
+
+Box.test(res, type="Ljung-Box")
+
+# The null for Box.test is that our model DOES NOT show a lack of fit.
+# I guess it is close.
+
+```
+I guess it is close, but we can't reject the null based on the Ljung-Box test.
+
+See what a prediction looks like:
+
+```{r}
+
+arimaResults %>% forecast(h = length(testTS)) %>% autoplot()
+
+
+# ** Tried all the following things before finding the right mix for auto.arima above ** 
+#-------------------------------------
+
+# #arimaresults2 %>% forecast(h = 302) %>% autoplot()
+# 
+# #accuracy(arimaresults2)
+# 
+# # tbatsR <- tbats(trainTS)
+# 
+# # tbatsR %>% forecast() %>% autoplot()
+# 
+# pred <- predict(arimaResults, n.ahead = length(testTS))
+# 
+# ts.plot(trainTS, pred$pred)
+# 
+# ###Try something:
+# 
+# dif <- diff(trainTS)
+# fit <- auto.arima(dif)
+# 
+# # The following shows an upward trend, but the seasonality vanishes.
+# pred <- predict(fit, n.ahead = length(testTS))
+# ts.plot(dif, pred$pred)
+# trainTemp_pred<-trainTS[length(trainTS)]
+# for (i in 1:length(pred$pred)) {
+#   trainTemp_pred[i+1]<-trainTemp_pred[i]+pred$pred[i]
+# }
+# plot(c(trainTS, trainTemp_pred), type='l')
+# 
+# tsdisplay(residuals(arimaResults))
+
+
+```
+
+
+
+##Now let's see how the results stack up.
+
+I tried a number of prediction analysis measures.
+```{r}
+
+testForecast <- forecast(arimaResults, h = length(testTS))
+
+# Had to install Library "Metrics" for mse:
+
+#testForecast$mean
+#testTS
+
+# Mean Square Error
+cat("Mean Square Error: ", mse(testTS, testForecast$mean), "\n")
+# In general, for Mean Square Error, the smaller the better.  The squaring
+# can heavily weight larger differences.  May not be a good test for TS data.
+
+# Mean Absolute Error
+cat("Mean Absolute Error: ", mae(testTS, testForecast$mean), "\n")
+
+# Root Mean Square Error
+cat("Root Mean Square Error: ", rmse(testTS, testForecast$mean), "\n")
+
+# Relative Squared Error
+cat("Relative Squared Error: ", rse(testTS, testForecast$mean), "\n")
+
+# Root Relative Squared Error
+cat("Root Relative Squared Error: ", rrse(testTS, testForecast$mean), "\n")
+
+# R-Squared 
+cat("R-Squared test: ", cor(testTS, testForecast$mean)^2, "\n")
+
+# Mean Absolute Percentage Error
+cat("Mean Absolute Percentage Error: ", mape(testTS, testForecast$mean), "\n")
+
+# Symmetric Mean Absolute Percentage Error
+cat("Symmetric Mean Absolute Percentage Error: ", smape(testTS, testForecast$mean), "\n")
+
+
+```
+
+Websites:
+
+https://towardsdatascience.com/the-complete-guide-to-time-series-analysis-and-forecasting-70d476bfe775
+
+https://a-little-book-of-r-for-time-series.readthedocs.io/en/latest/src/timeseries.html#decomposing-time-series
+
+https://otexts.com/fpp2/
+
+
+
+
+Try to get an overlay to work:
+```{r}
+
+# gP <- ggplot(datProj, aes(x=V3, y=V6))
+# gP <- gP + geom_point(size = .2, color="blue") + ggtitle("Global Mean Sea Level Data - NASA, 1993 to 2020") 
+# gP <- gP + labs(x="Year", y="Variation w/ respect to 20 year mean reference (mm)")
+# gP
+
+foreDF <- testForecast$mean
+foreDF
+
+gP <- ggplot(datSL, aes(x=Yr, y=SL))
+gP <- gP + geom_point(size = .2) + ggtitle("GMSL Actual (black) vs. Predicted (red)") 
+gP <- gP + labs(x="Year", y="Variation w/ respect to 20 year mean reference (mm)")
+
+
+gP = gP + geom_point(data = foreDF, aes(x=x, y=y), color="red", size = .1)
+gP
+```
+
+Overlay graph worked!
+
+
+Down the rabbit hole of whether or not to remove the outlier.
+```{r}
+
+#Just remove it first:
+   
+dat2SL_TS <-  tsclean(datSL_TS)
+
+plot(dat2SL_TS)
+
+outlier(dat2SL_TS)
+chisq.out.test(dat2SL_TS, variance=var(trainTS), opposite = FALSE)
+
+train2TS <- head(dat2SL_TS, round(length(dat2SL_TS) * 0.7))
+x <- length(dat2SL_TS) - length(trainTS)
+test2TS <- tail(dat2SL_TS, x)
+
+# auto.arima(train2TS, allowdrift = TRUE, stationary = FALSE, seasonal = TRUE, method = "ML")
+# Takes a long time to run, so commented out.
+
+# Results in the same settings as before the outlier removal.
+
+
+```
+
+
+
+```{r}
+# Test of the prediction if I split the original trainTS into 70%/30% to see how the prediction goes.
+
+# trainTS <- head(datSL_TS, round(length(datSL_TS) * 0.7))
+# x <- length(datSL_TS) - length(trainTS)
+# testTS <- tail(datSL_TS, x)
+
+train2 <- head(trainTS, round(length(trainTS) * 0.7))
+x2 <- length(trainTS) - length(train2)
+test2 <- tail(trainTS, x2)
+
+SARIMA2.model <- auto.arima(train2, allowdrift = TRUE, stationary = FALSE, seasonal = TRUE, method = "ML")
+
+plot(forecast(SARIMA2.model, h = 211))
+
+summary(SARIMA2.model)
+
+# With Time I would continue to play with this to experiment.  But right now, time is too precious.
+
+
+
+
+```
+
